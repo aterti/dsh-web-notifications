@@ -32,15 +32,19 @@ Exactly the rows the Settings panel shows, in panel order:
 
 ## Settings
 
-Everything applies instantly; the footer says so next to the reset button.
-
-- **Enable notifications** — the master switch.
-- Per type: its own switch, a tone picker, and **Test** (a real card and tone), **Preview** (the card shape as an in-app toast), **Test tone** (the tone alone).
-- **Alert behavior**: _Tone volume_, _Mute tones while this tab is focused_, _Only show cards when this tab is not focused_, _Maximum card body length_, _Also notify for subagent sessions_.
-- **Custom tones**: upload, audition, rename, delete.
-- **Reset to defaults** in the footer, on a second click.
-
-There is no rate window: every event that passes its own dedupe fires once. Multiple tabs in one browser share the alert — exactly one card and tone per frame.
+| Control                                          | What it does                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------- |
+| **Enable notifications**                         | Master switch                                                       |
+| Per-type switch                                  | Turns that one alert off                                            |
+| Per-type tone picker                             | Any preset, **None**, or one of your uploaded tones                 |
+| **Test** / **Preview** / **Test tone**           | A real card and tone; the card shape as a toast; the tone alone     |
+| **Tone volume**                                  | 0 to 100                                                            |
+| **Mute tones while this tab is focused**         | Silence tones when you are already looking at the tab               |
+| **Only show cards when this tab is not focused** | Suppress cards while the tab is visible and focused; the tone plays |
+| **Maximum card body length**                     | Text cap on approval, failure, question, and goal cards             |
+| **Also notify for subagent sessions**            | Include alerts raised by subagents                                  |
+| **Custom tones**                                 | Upload, audition, rename, delete                                    |
+| **Reset to defaults**                            | Asks for a second click                                             |
 
 ## Tones
 
@@ -51,13 +55,5 @@ You can upload your own tones too — `.wav`, `.ogg`, or `.mp3`, up to 500 KB ea
 ## Privacy
 
 Approval reasons, question text, and failure messages go to open tabs and are logged only as request id plus length; the plugin never persists them. It writes nothing outside its data directory, phones home nowhere, adds nothing to the model's context, and changes nothing in dsh's approval policy or agent loop.
-
-## Development
-
-```sh
-npm test          # trigger contracts, node:test, no build step
-npm run lint
-npm run format
-```
 
 MIT — see [LICENSE](LICENSE).

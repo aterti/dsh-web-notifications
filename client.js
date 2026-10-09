@@ -77,7 +77,7 @@ window.__ModuleLoader__.load({
         'Allow notifications for this site in your browser site settings, then reload this page.',
       'permission.enable': 'Enable browser notifications',
       'permission.insecure':
-        'This page is not a secure context, so the browser blocks notification cards. Serve dsh over HTTPS (the README includes a Caddy snippet); alerts appear as in-app toasts until then.',
+        'This page is not a secure context, so the browser blocks notification cards. Reach dsh over https, or open it on localhost; alerts appear as in-app toasts until then.',
       'permission.unsupported': 'This browser has no Notification API; alerts appear as in-app toasts.',
       'field.volume': 'Tone volume',
       'field.volume.muted': 'Muted',

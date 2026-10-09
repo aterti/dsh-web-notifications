@@ -8,7 +8,13 @@ Tone and browser-notification alerts for [dsh](https://www.npmjs.com/package/@de
 dsh plugin --profile web add github:aterti/dsh-web-notifications
 ```
 
-From a local checkout, pass the directory instead. Host-side edits need a dsh restart; `client.js` edits only need a browser refresh.
+Or from a local checkout:
+
+```sh
+dsh plugin --profile web add /path/to/dsh-web-notifications
+```
+
+Host-side edits need a dsh restart; `client.js` edits only need a browser refresh.
 
 ## What it notifies
 
@@ -21,19 +27,11 @@ From a local checkout, pass the directory instead. Host-side edits need a dsh re
 | `agentStalled`                 | The reply was cut off by the output-token limit                      |
 | `goalComplete` / `goalBlocked` | A tracked goal ended, or stopped where it needs you (off by default) |
 
-Never: aborted turns, hook-rejected turns, crash or fork closers, resume and history replay, plugin load, subagent turns (off by default), or a second card for the same turn. The feed is live-only, so reconnecting replays nothing.
-
 ## Requirements
 
-Current Firefox and Chrome. OS cards need a secure context, so serve dsh over HTTPS:
+Current Firefox and Chrome.
 
-```caddyfile
-dsh.example.com {
-    reverse_proxy 127.0.0.1:3080
-}
-```
-
-Proxy dsh's paths at the site root without stripping a prefix: tones are served from `/notifications/tones/...` and the event stream rides the WebSocket at `/api/remote.mux`. Add the public host to `trustedHosts` in dsh's `client-connection` config. Over plain HTTP, or with permission denied, alerts fall back to in-app toasts and the tone still plays.
+OS notification cards need a secure context: `https`, or plain `http` on `localhost` or `127.0.0.1`. Anywhere else — a LAN address over plain HTTP, for example — the browser hides the Notification API, and alerts fall back to in-app toasts. Tones play either way.
 
 Notification permission is requested from an explicit button, and its state is shown live. Multiple tabs in one browser dedupe through a `BroadcastChannel`: exactly one card and tone per frame.
 

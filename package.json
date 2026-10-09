@@ -1,0 +1,83 @@
+{
+  "name": "dsh-web-notifications",
+  "version": "0.2.0",
+  "description": "Tone and browser-notification alerts when the agent finishes a turn, needs approval or an answer, fails, stalls at the token limit, or ends a goal",
+  "type": "module",
+  "license": "MIT",
+  "main": "index.js",
+  "author": "aterti",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aterti/dsh-web-notifications.git"
+  },
+  "homepage": "https://github.com/aterti/dsh-web-notifications#readme",
+  "bugs": {
+    "url": "https://github.com/aterti/dsh-web-notifications/issues"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "notifications",
+    "browser-notifications",
+    "tones",
+    "alerts"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "config.js",
+    "client.js",
+    "triggers.js",
+    "text.js",
+    "tones.js",
+    "tones",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "icon": "./icon.svg",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-gateway",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    },
+    "manifestVersion": 1
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-home-paths": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "^0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9"
+  }
+}

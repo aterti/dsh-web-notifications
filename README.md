@@ -32,19 +32,21 @@ Exactly the rows the Settings panel shows, in panel order:
 
 ## Settings
 
-| Control                                          | What it does                                                        |
-| ------------------------------------------------ | ------------------------------------------------------------------- |
-| **Enable notifications**                         | Master switch                                                       |
-| Per-type switch                                  | Turns that one alert off                                            |
-| Per-type tone picker                             | Any preset, **None**, or one of your uploaded tones                 |
-| **Test** / **Preview** / **Test tone**           | A real card and tone; the card shape as a toast; the tone alone     |
-| **Tone volume**                                  | 0 to 100                                                            |
-| **Mute tones while this tab is focused**         | Silence tones when you are already looking at the tab               |
-| **Only show cards when this tab is not focused** | Suppress cards while the tab is visible and focused; the tone plays |
-| **Maximum card body length**                     | Text cap on approval, failure, question, and goal cards             |
-| **Also notify for subagent sessions**            | Include alerts raised by subagents                                  |
-| **Custom tones**                                 | Upload, audition, rename, delete                                    |
-| **Reset to defaults**                            | Asks for a second click                                             |
+| Control                                          | What changes when you touch it                                                                      |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| **Enable notifications**                         | Off means nothing at all: no cards, no tones, for any type.                                         |
+| Per-type switch                                  | Drop one alert and keep the rest — keep _Approval needed_, silence _Turn complete_.                 |
+| Per-type tone picker                             | Gives each alert its own sound, so you know which one fired without looking.                        |
+| **Test**                                         | Sends a real alert — card and tone, exactly like a live one — in the tab you clicked.               |
+| **Preview**                                      | Shows what the card would look like, as a toast inside dsh. Nothing leaves the page.                |
+| **Test tone**                                    | Plays that sound alone, so you can choose by ear.                                                   |
+| **Tone volume**                                  | How loud the alert sounds, 0 to 100.                                                                |
+| **Mute tones while this tab is focused**         | No sound while you are already looking at dsh. Cards still appear.                                  |
+| **Only show cards when this tab is not focused** | No card while you are looking at the tab — you already know — but the tone still rings.             |
+| **Maximum card body length**                     | How much of the agent's reason, question, or error text fits in the card before it is cut.          |
+| **Also notify for subagent sessions**            | Off: sessions another agent spawned stay quiet, and only the session you are talking to alerts you. |
+| **Custom tones**                                 | Your own sounds, then chosen per alert type.                                                        |
+| **Reset to defaults**                            | Puts every setting back. Needs a second click, so it cannot happen by accident.                     |
 
 ## Tones
 

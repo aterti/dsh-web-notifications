@@ -1,6 +1,6 @@
 # dsh-web-notifications
 
-Tone and browser-notification alerts for [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) when an agent session needs you and you are not looking at the tab. Adds a `Notifications` section to Settings; no dsh source changes.
+Tone and browser-notification alerts for [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) in current Firefox and Chrome, for when an agent session needs you and you are not looking at the tab. Adds a `Notifications` section to Settings; no dsh source changes.
 
 ## Install
 
@@ -18,43 +18,35 @@ Host-side edits need a dsh restart; `client.js` edits only need a browser refres
 
 ## What it notifies
 
-| Type                           | Fires when                                                           |
-| ------------------------------ | -------------------------------------------------------------------- |
-| `turnComplete`                 | The turn delivered its final answer                                  |
-| `approvalRequired`             | The agent asks permission to act                                     |
-| `inputRequired`                | The agent stopped to wait for a question or a plan review            |
-| `turnFailed`                   | The turn died on a provider or network error, after retries          |
-| `agentStalled`                 | The reply was cut off by the output-token limit                      |
-| `goalComplete` / `goalBlocked` | A tracked goal ended, or stopped where it needs you (off by default) |
+Exactly the rows the Settings panel shows, in panel order:
 
-## Requirements
-
-Current Firefox and Chrome.
-
-OS notification cards need a secure context: `https`, or plain `http` on `localhost` or `127.0.0.1`. Anywhere else — a LAN address over plain HTTP, for example — the browser hides the Notification API, and alerts fall back to in-app toasts. Tones play either way.
-
-Notification permission is requested from an explicit button, and its state is shown live. Multiple tabs in one browser dedupe through a `BroadcastChannel`: exactly one card and tone per frame.
+| Row                     | Fires when                                                                  |
+| ----------------------- | --------------------------------------------------------------------------- |
+| Turn complete           | The agent finishes its final answer for a turn                              |
+| Approval needed         | The agent asks permission, showing its stated reason                        |
+| Waiting for your answer | The agent stops mid-task to wait for you: a question, or a plan to review   |
+| Turn failed             | A turn dies on a provider or network error, after retries are spent         |
+| Agent stalled           | A reply is cut off by the output-token limit                                |
+| Goal complete           | A tracked goal finishes                                                     |
+| Goal blocked            | A goal stops because the agent cannot continue without you — off by default |
 
 ## Settings
 
-All of these apply without a restart.
+Everything applies instantly; the footer says so next to the reset button.
 
-| Field                   | Default  | Meaning                                              |
-| ----------------------- | -------- | ---------------------------------------------------- |
-| `enabled`               | `true`   | Master switch                                        |
-| `volume`                | `70`     | Tone volume, 0-100                                   |
-| `muteWhenFocused`       | `false`  | Silence tones while this tab is focused              |
-| `onlyWhenHidden`        | `true`   | Suppress cards while this tab is visible and focused |
-| `maxBodyChars`          | `200`    | Card body cap (hard max 250)                         |
-| `subagentNotifications` | `false`  | Also notify for subagent sessions                    |
-| `types.<id>.enabled`    | `true`   | Per-type switch; `goalBlocked` ships off             |
-| `types.<id>.tone`       | per type | Preset id, `none`, or a custom tone                  |
+- **Enable notifications** — the master switch.
+- Per type: its own switch, a tone picker, and **Test** (a real card and tone), **Preview** (the card shape as an in-app toast), **Test tone** (the tone alone).
+- **Alert behavior**: _Tone volume_, _Mute tones while this tab is focused_, _Only show cards when this tab is not focused_, _Maximum card body length_, _Also notify for subagent sessions_.
+- **Custom tones**: upload, audition, rename, delete.
+- **Reset to defaults** in the footer, on a second click.
 
-There is no rate window: every event that passes its own dedupe fires once. **Test** sends a real card and tone, **Preview** shows the card shape as a toast, **Test tone** plays the tone alone.
+There is no rate window: every event that passes its own dedupe fires once. Multiple tabs in one browser share the alert — exactly one card and tone per frame.
 
 ## Tones
 
-Seven presets (`chime`, `ping`, `bubble`, `marimba`, `knock`, `alarm`, `triple-tick`), generated by `tools/generate-tones.mjs` and committed as WAVs. Custom tones accept `.wav`, `.ogg`, or `.mp3` under a size cap and a stored-count cap, are re-validated by magic bytes, and live in the plugin data directory (`~/.dsh/notifications/custom/`).
+Seven built in: **Chime**, **Ping**, **Bubble**, **Marimba**, **Knock**, **Alarm**, **Triple tick**.
+
+You can upload your own tones too — `.wav`, `.ogg`, or `.mp3`, up to 500 KB each and 50 stored by default — and they appear in every tone picker. Uploads are checked by their contents, not just by their extension.
 
 ## Privacy
 

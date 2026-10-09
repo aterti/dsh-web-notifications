@@ -1,0 +1,6 @@
+# Profile layer installed with the bundle: one row that activates the host
+# half. The same package also carries the browser half through the `dsh.client`
+# manifest in package.json, so a single row is enough.
+- insert:
+    - id: notifications
+      name: dsh-web-notifications

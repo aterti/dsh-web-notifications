@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Notifications",
+    "description": "Tone and browser-notification alerts when the agent finishes a turn, needs approval or an answer, fails, stalls at the token limit, or ends a goal."
+  }
+}

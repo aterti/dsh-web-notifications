@@ -8,7 +8,7 @@
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { Config, NOTIFICATION_TYPES, PRESET_TONES, migrateConfig, reportUnknownKeys } from './config.js'
+import { Config, NOTIFICATION_TYPES, PRESET_TONE_FILES, migrateConfig, reportUnknownKeys } from './config.js'
 import { installTriggers } from './triggers.js'
 import {
   TONE_ROUTE_PREFIX,
@@ -272,7 +272,7 @@ export function apply(ctx, config) {
           path: TONE_ROUTE_PREFIX,
           handler: createToneHandler({
             presetDir: fileURLToPath(new URL('tones/', import.meta.url)),
-            presetNames: PRESET_TONES,
+            presetFiles: Object.values(PRESET_TONE_FILES),
             config,
           }),
         }),

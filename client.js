@@ -22,16 +22,30 @@ window.__ModuleLoader__.load({
       'goalComplete',
       'goalBlocked',
     ]
-    const PRESET_TONES = ['chime', 'ping', 'bubble', 'marimba', 'knock', 'alarm', 'triple-tick']
+    // Mirrors PRESET_TONE_FILES in config.js; the browser half imports nothing.
+    const PRESET_TONE_FILES = {
+      chime: 'chime.wav',
+      ping: 'ping.wav',
+      bubble: 'bubble.wav',
+      marimba: 'marimba.wav',
+      knock: 'knock.wav',
+      alarm: 'alarm.wav',
+      'triple-tick': 'triple-tick.wav',
+      ding: 'ding.ogg',
+      chimes: 'chimes.ogg',
+      'ding-deep': 'ding-deep.ogg',
+      dum: 'dum.ogg',
+    }
+    const PRESET_TONES = Object.keys(PRESET_TONE_FILES)
     // Mirrors the per-type tone defaults in config.js; used to reassign a
     // type when its selected custom tone is deleted.
     const TYPE_DEFAULT_TONES = {
-      turnComplete: 'chime',
-      approvalRequired: 'ping',
-      agentStalled: 'alarm',
-      turnFailed: 'alarm',
+      turnComplete: 'ding',
+      approvalRequired: 'bubble',
+      agentStalled: 'dum',
+      turnFailed: 'dum',
       inputRequired: 'knock',
-      goalComplete: 'chime',
+      goalComplete: 'ding',
       goalBlocked: 'triple-tick',
     }
     const UPLOAD_EXTENSIONS = ['wav', 'ogg', 'mp3']
@@ -48,7 +62,7 @@ window.__ModuleLoader__.load({
     // Mirrors the defaults in config.js; used by Reset to defaults.
     const CONFIG_DEFAULTS = {
       enabled: true,
-      volume: 70,
+      volume: 100,
       muteWhenFocused: false,
       onlyWhenHidden: true,
       maxBodyChars: 200,
@@ -57,12 +71,12 @@ window.__ModuleLoader__.load({
       toneMaxCount: 50,
     }
     const TYPE_DEFAULTS = {
-      turnComplete: { enabled: true, tone: 'chime' },
-      approvalRequired: { enabled: true, tone: 'ping' },
-      agentStalled: { enabled: true, tone: 'alarm' },
-      turnFailed: { enabled: true, tone: 'alarm' },
+      turnComplete: { enabled: true, tone: 'ding' },
+      approvalRequired: { enabled: true, tone: 'bubble' },
+      agentStalled: { enabled: true, tone: 'dum' },
+      turnFailed: { enabled: true, tone: 'dum' },
       inputRequired: { enabled: true, tone: 'knock' },
-      goalComplete: { enabled: true, tone: 'chime' },
+      goalComplete: { enabled: true, tone: 'ding' },
       goalBlocked: { enabled: false, tone: 'triple-tick' },
     }
 
@@ -93,13 +107,13 @@ window.__ModuleLoader__.load({
       'type.agentStalled.hint': 'Fires when a reply is cut off by the output-token limit.',
       'type.turnFailed': 'Turn failed',
       'type.turnFailed.hint':
-        'Fires when a turn dies on a provider or network error, after retries are spent. Starts on the same Alarm tone as Agent stalled. Give it its own below if you want them told apart by ear.',
+        'Fires when a turn dies on a provider or network error, after retries are spent. Starts on the same Dum tone as Agent stalled. Give it its own below if you want them told apart by ear.',
       'type.inputRequired': 'Waiting for your answer',
       'type.inputRequired.hint':
         'Fires when the agent stops mid-task to wait for you: a question, or a finished plan ready for review.',
       'type.goalComplete': 'Goal complete',
       'type.goalComplete.hint':
-        'Fires when a tracked goal finishes. Starts on the same Chime tone as Turn complete. Give it its own below if you want them told apart by ear.',
+        'Fires when a tracked goal finishes. Starts on the same Ding tone as Turn complete. Give it its own below if you want them told apart by ear.',
       'type.goalBlocked': 'Goal blocked',
       'type.goalBlocked.hint':
         'Fires when a goal stops because the agent cannot continue without you, with the reason it gave. Off by default.',
@@ -120,6 +134,10 @@ window.__ModuleLoader__.load({
       'tone.knock': 'Knock',
       'tone.alarm': 'Alarm',
       'tone.triple-tick': 'Triple tick',
+      'tone.ding': 'Ding',
+      'tone.chimes': 'Chimes',
+      'tone.ding-deep': 'Ding deep',
+      'tone.dum': 'Dum',
       'tones.title': 'Custom tones',
       'tones.hint': 'Upload .wav, .ogg, or .mp3 files; they appear in the tone pickers.',
       'tones.empty': 'No custom tones yet.',
@@ -448,7 +466,7 @@ window.__ModuleLoader__.load({
 
     /** Document-relative tone URL; works behind any reverse proxy. */
     function toneUrl(toneId, settings) {
-      if (PRESET_TONES.includes(toneId)) return `notifications/tones/${toneId}.wav`
+      if (PRESET_TONES.includes(toneId)) return `notifications/tones/${PRESET_TONE_FILES[toneId]}`
       const entry = (settings.customTones ?? []).find((tone) => tone.id === toneId)
       return entry === undefined ? undefined : `notifications/tones/${entry.file}`
     }

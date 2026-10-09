@@ -44,7 +44,7 @@ Exactly the rows the Settings panel shows, in panel order:
 
 ## Tones
 
-Seven built in: **Chime**, **Ping**, **Bubble**, **Marimba**, **Knock**, **Alarm**, **Triple tick**.
+Eleven built in: **Chime**, **Ping**, **Bubble**, **Marimba**, **Knock**, **Alarm**, **Triple tick**, **Ding**, **Chimes**, **Ding deep**, **Dum**. Seven are generated in this repository; the last four come from a CC0 pack by Robin Lamb, credited in [tones/CREDITS.md](tones/CREDITS.md).
 
 You can upload your own tones too (`.wav`, `.ogg`, or `.mp3`, up to 500 KB each and 50 stored by default) and they appear in every tone picker. Uploads are checked by their contents, not just by their extension.
 

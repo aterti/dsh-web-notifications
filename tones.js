@@ -109,12 +109,13 @@ export async function removeCustomTone(dataRoot, file) {
 
 /**
  * Build the tone route handler.
- * @param options - `{ presetDir, presetNames, config }`: the plugin's shipped
- *   tones, their file names, and the live config (for the custom manifest).
+ * @param options - `{ presetDir, presetFiles, config }`: the plugin's shipped
+ *   tones, the file names they are served under, and the live config (for the
+ *   custom manifest).
  * @returns a webServer request handler.
  */
-export function createToneHandler({ presetDir, presetNames, config }) {
-  const presets = new Set(presetNames.map((name) => `${name}.wav`))
+export function createToneHandler({ presetDir, presetFiles, config }) {
+  const presets = new Set(presetFiles)
   return async (request, response) => {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       response.writeHead(405, { allow: 'GET, HEAD' })

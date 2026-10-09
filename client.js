@@ -804,6 +804,14 @@ window.__ModuleLoader__.load({
       )
 
       return [
+        // The chip sits between the label and the slider, never after the
+        // value. The field head is a flex row whose label absorbs the slack,
+        // so a chip appended at the end reflows the row and slides the whole
+        // slider sideways. Under a held pointer that is a feedback loop: the
+        // track moves out from under the thumb, the value bounces off zero,
+        // the chip unmounts, the track slides back — visible as flicker at
+        // zero. Ahead of the flexing label, the slider and value never move.
+        shown === 0 ? h('span', { key: 'muted', className: 'dshn-chip' }, t('field.volume.muted')) : null,
         h('input', {
           key: 'range',
           id: 'dshn-volume',
@@ -836,7 +844,6 @@ window.__ModuleLoader__.load({
           },
         }),
         h('span', { key: 'value', className: 'dshn-value' }, String(shown)),
-        shown === 0 ? h('span', { key: 'muted', className: 'dshn-chip' }, t('field.volume.muted')) : null,
       ]
     }
 

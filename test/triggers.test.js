@@ -4,8 +4,8 @@
 // a fake Cordis context that records listeners, a fake config shaped like the
 // volatile schema (every leaf read with `.get()`), and a fake controller that
 // records the `buildFrame` arguments instead of assembling a frame. So these
-// tests pin what fires, with what body and title, and what stays silent —
-// never the browser delivery path.
+// tests pin what fires, with what body and title, and what stays silent. They
+// never cover the browser delivery path.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

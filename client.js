@@ -93,13 +93,13 @@ window.__ModuleLoader__.load({
       'type.agentStalled.hint': 'Fires when a reply is cut off by the output-token limit.',
       'type.turnFailed': 'Turn failed',
       'type.turnFailed.hint':
-        'Fires when a turn dies on a provider or network error, after retries are spent. Starts on the same Alarm tone as Agent stalled — give it its own below if you want them told apart by ear.',
+        'Fires when a turn dies on a provider or network error, after retries are spent. Starts on the same Alarm tone as Agent stalled. Give it its own below if you want them told apart by ear.',
       'type.inputRequired': 'Waiting for your answer',
       'type.inputRequired.hint':
         'Fires when the agent stops mid-task to wait for you: a question, or a finished plan ready for review.',
       'type.goalComplete': 'Goal complete',
       'type.goalComplete.hint':
-        'Fires when a tracked goal finishes. Starts on the same Chime tone as Turn complete — give it its own below if you want them told apart by ear.',
+        'Fires when a tracked goal finishes. Starts on the same Chime tone as Turn complete. Give it its own below if you want them told apart by ear.',
       'type.goalBlocked': 'Goal blocked',
       'type.goalBlocked.hint':
         'Fires when a goal stops because the agent cannot continue without you, with the reason it gave. Off by default.',
@@ -710,7 +710,7 @@ window.__ModuleLoader__.load({
 
     function StatusStrip({ t, retrying }) {
       // Quiet by design: no status readout while everything works. The strip
-      // only appears when something needs attention — a permission that is
+      // only appears when something needs attention: a permission that is
       // not granted yet, a blocked or impossible card channel, or a stream
       // that is reconnecting.
       const permission = useSyncExternalStore(subscribePermission, getPermissionState)

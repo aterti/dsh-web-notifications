@@ -6,7 +6,7 @@
 //                    claiming the request.
 // agent_stalled:     `turn/end` with reason `max-tokens` (the output-token
 //                    limit), never natural stops, aborts, or provider errors.
-// turn_failed:       `turn/end` with reason `error` — the turn died on a
+// turn_failed:       `turn/end` with reason `error`: the turn died on a
 //                    provider or transport failure once retries were spent.
 // input_required:    the `user-questions/request` waterfall, observed without
 //                    claiming it. The turn is still open here (the tool call
@@ -15,13 +15,13 @@
 //                    on the human. A request whose question carries the
 //                    `plan-review` intent is a finished plan awaiting review.
 // goal_complete:     the `goal/change` session event for the `complete`
-//                    operation — a tracked objective reached its end.
+//                    operation: a tracked objective reached its end.
 // goal_blocked:      the `goal/change` session event for the `block`
-//                    operation — automatic continuation stopped and needs the
+//                    operation: automatic continuation stopped and needs the
 //                    human. Disabled by default.
 //
 // What never fires from `turn/end`: `aborted` (the user stopped it themselves,
-// or a teardown did — nothing to tell them), `blocked` (a hook rejected the
+// or a teardown did, so there is nothing to tell them), `blocked` (a hook rejected the
 // turn before its first step), and `interrupted` / `forked` (closers written
 // for a crashed or forked log, not live endings; a session resume appends them
 // through the same live feed, so they are filtered explicitly).
@@ -217,7 +217,7 @@ export function installTriggers(ctx, config, controller) {
       // Only the two terminal operations notify. Every other goal mutation
       // (create, edit, pause, resume) also carries a full snapshot, and a
       // resumed goal's snapshot can still read `complete` from an earlier
-      // revision, so the operation — never the phase alone — decides.
+      // revision, so the operation, never the phase alone, decides.
       const operation = event.data?.operation
       if (operation === 'complete') fireGoal(event.data.goal, 'goalComplete')
       else if (operation === 'block') fireGoal(event.data.goal, 'goalBlocked')

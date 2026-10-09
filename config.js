@@ -57,7 +57,7 @@ const typeShape = (defaults) => ({
 //
 // The per-type `cooldownSeconds` and `toneEveryStall` keys were removed: every
 // event now emits its card and tone. A document still carrying them keeps
-// working — the loader is non-strict, and each leftover key is reported once as
+// working: the loader is non-strict, and each leftover key is reported once as
 // an unknown key rather than breaking the load. `CONFIG_VERSION` stays at 1
 // because the host half never writes config (the browser owns every write), so
 // there is no in-place migration to run; the stale lines are deleted by hand or

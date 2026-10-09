@@ -49,7 +49,6 @@
     "locale",
     "icon.svg",
     "README.md",
-    "CHANGELOG.md",
     "LICENSE"
   ],
   "icon": "./icon.svg",

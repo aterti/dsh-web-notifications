@@ -8,6 +8,7 @@
 import { createReadStream } from 'node:fs'
 import { mkdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { usableTones } from './config.js'
 
 /** Route prefix serving every tone file. */
 export const TONE_ROUTE_PREFIX = '/notifications/tones'
@@ -19,8 +20,17 @@ const FORMATS = {
   mp3: 'audio/mpeg',
 }
 
-/** Tone file names are restricted to this alphabet: no path separators, no `..`. */
-const SAFE_FILE = /^[a-z0-9][a-z0-9._-]*$/
+/**
+ * Tone file names are restricted to this alphabet: no path separators, no
+ * `..`. Exported so the delete path can re-check a stored manifest entry
+ * before unlinking anything.
+ */
+export const SAFE_FILE = /^[a-z0-9][a-z0-9._-]*$/
+
+/** True only for the plugin's own format keys, never for prototype names. */
+function isFormat(extension) {
+  return Object.hasOwn(FORMATS, extension)
+}
 
 /**
  * Detect the container format from magic bytes. The extension alone is not
@@ -66,7 +76,7 @@ export function sanitizeName(name) {
  * @returns `{ format }` or `{ error }`.
  */
 export function validateUpload(buffer, extension, maxBytes) {
-  if (!(extension in FORMATS)) return { error: 'only .wav, .ogg, and .mp3 files are accepted' }
+  if (!isFormat(extension)) return { error: 'only .wav, .ogg, and .mp3 files are accepted' }
   if (buffer.length === 0) return { error: 'uploaded file is empty' }
   if (buffer.length > maxBytes) return { error: `file exceeds the ${maxBytes} byte limit` }
   const format = detectFormat(buffer)
@@ -130,7 +140,7 @@ export function createToneHandler({ presetDir, presetFiles, config }) {
       return
     }
     const extension = name.slice(name.lastIndexOf('.') + 1)
-    const mime = FORMATS[extension]
+    const mime = isFormat(extension) ? FORMATS[extension] : undefined
     if (mime === undefined) {
       response.writeHead(404)
       response.end()
@@ -138,12 +148,14 @@ export function createToneHandler({ presetDir, presetFiles, config }) {
     }
     // Presets come from the plugin directory; custom files must be listed in
     // the config manifest, so stray or half-written uploads are never served.
+    // The manifest is read through `usableTones`: the loader accepts malformed
+    // rows, and touching `tone.file` on one would throw inside the route.
     // Custom names embed a fresh id per upload and are never rewritten in
     // place, so long caching is sound for both kinds.
     const isPreset = presets.has(name)
     let path = join(presetDir, name)
     if (!isPreset) {
-      const listed = (config.customTones.get() ?? []).some((tone) => tone.file === name)
+      const listed = usableTones(config.customTones.get()).some((tone) => tone.file === name)
       if (!listed) {
         response.writeHead(404)
         response.end()

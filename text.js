@@ -8,7 +8,9 @@ const IMAGE = /!\[[^\]]*\]\([^)]*\)/g
 // Links keep their label, inline code keeps its content.
 const LINK = /\[([^\]]*)\]\([^)]*\)/g
 const INLINE_CODE = /`([^`]*)`/g
-const EMPHASIS = /(\*\*|__|\*|_)/g
+// Emphasis markers only: `*` runs anywhere, `_` only at word edges, so
+// identifiers like `snake_case` survive the strip.
+const EMPHASIS = /(\*\*|__|\*(?=\S)|(?<=\S)\*|(?<!\w)_(?=\S)|(?<=\S)_(?!\w))/g
 const HEADING = /^#{1,6}\s+/gm
 const QUOTE = /^>\s?/gm
 const LIST_ITEM = /^\s*(?:[-*+]|\d+\.)\s+/gm

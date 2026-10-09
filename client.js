@@ -49,15 +49,50 @@ window.__ModuleLoader__.load({
       goalBlocked: 'triple-tick',
     }
     const UPLOAD_EXTENSIONS = ['wav', 'ogg', 'mp3']
-    // Mirrors the TEST_BODIES in index.js; used for in-panel preview toasts.
-    const PREVIEW_BODIES = {
-      turnComplete: 'This is a test notification from dsh-web-notifications.',
-      approvalRequired: 'Approval requested: this is a test notification from dsh-web-notifications.',
-      agentStalled: 'The reply was cut off by the token limit. Type "continue" to resume.',
-      turnFailed: 'The model request failed. (UNKNOWN)',
-      inputRequired: 'Which of these should I change? Open dsh to answer.',
-      goalComplete: 'Ship the notification settings redesign.',
-      goalBlocked: 'The build still fails on the same missing dependency.',
+    // Mirrors usableTones in config.js. The host's array check accepts a null
+    // row, and every read below touches tone.id, so one malformed row in a
+    // stored document must never take the whole panel down.
+    function usableTones(list) {
+      if (!Array.isArray(list)) return []
+      return list.filter(
+        (tone) =>
+          tone !== null &&
+          typeof tone === 'object' &&
+          typeof tone.id === 'string' &&
+          tone.id !== '' &&
+          typeof tone.file === 'string' &&
+          tone.file !== '',
+      )
+    }
+    // Mirrors toneRecordFrom in config.js. Reads the record out of an
+    // uploadTone reply, flat or nested, and reports a record-less reply as
+    // null: appending undefined to the manifest is how a `- null` row got
+    // written into the profile document.
+    function toneRecordFrom(reply) {
+      const source = reply !== null && typeof reply === 'object' ? (reply.tone ?? reply) : null
+      if (source === null || typeof source !== 'object') return null
+      const { id, name, file, bytes } = source
+      if (typeof id !== 'string' || id === '' || typeof file !== 'string' || file === '') return null
+      return {
+        id,
+        name: typeof name === 'string' && name !== '' ? name : id,
+        file,
+        bytes: typeof bytes === 'number' && Number.isFinite(bytes) ? bytes : 0,
+      }
+    }
+    // Mirrors remoteReplyPayload in config.js. The gateway resolves every
+    // unary call to an envelope: {ok:true,value} or {ok:false,error}. So the
+    // controller's own {ok,error} answer lives under `value`. Treating the
+    // envelope as the answer is what made an upload look successful while it
+    // carried no tone record, and what hid every business error.
+    function remoteReplyPayload(reply) {
+      if (reply === null || typeof reply !== 'object') return reply
+      if (reply.ok === false) {
+        const error = reply.error
+        const message = error !== null && typeof error === 'object' ? (error.message ?? error.code) : error
+        return { ok: false, error: String(message ?? 'the remote call failed') }
+      }
+      return Object.hasOwn(reply, 'value') ? reply.value : reply
     }
     // Mirrors the defaults in config.js; used by Reset to defaults.
     const CONFIG_DEFAULTS = {
@@ -121,11 +156,11 @@ window.__ModuleLoader__.load({
       'type.tone': 'Tone',
       'type.test': 'Test',
       'type.testTone': 'Test tone',
-      'type.preview': 'Preview',
-      'preview.title': 'Preview: {title}',
+      'type.testFailed': 'The test did not run: {error}',
       'action.reset': 'Reset to defaults',
       'action.resetConfirm': 'Click again to reset everything',
       'action.applyHint': 'Changes apply instantly.',
+      'action.saveFailed': 'A change could not be saved. Try again.',
       'tone.none': 'None',
       'tone.chime': 'Chime',
       'tone.ping': 'Ping',
@@ -156,7 +191,14 @@ window.__ModuleLoader__.load({
       'tones.badType': 'Only .wav, .ogg, and .mp3 files are accepted.',
       'tones.tooBig': 'That file is larger than the configured tone size limit.',
       'tones.badDecode': 'That file could not be decoded as audio.',
-      'tones.failed': 'Upload failed: {error}',
+      'tones.failed.title': 'Upload failed',
+      'tones.rejected': 'The Host refused the tone: {error}',
+      'tones.failed': 'The round trip did not complete: {error}',
+      'tones.norecord': 'The Host stored the file but its reply carried no tone record. Reply: {reply}',
+      'tones.saved.title': 'Tone added',
+      'tones.saved': '{name} is in the tone pickers now.',
+      'tones.saveFailed':
+        'The sound was stored but the settings write was refused, so it was removed again. Try once more.',
       'sound.unlock': 'Click to enable sound',
     }
 
@@ -271,12 +313,19 @@ window.__ModuleLoader__.load({
     }
 
     function pushToast(frame) {
-      toastList = [...toastList, { key: ++toastSeq, title: frame.title, body: frame.body }]
+      const key = ++toastSeq
+      toastList = [...toastList, { key, title: frame.title, body: frame.body }]
       notifyToasts()
+      // The dismissal clock starts when the toast appears. Scheduling it
+      // here, not per render in the stack, keeps a later toast from
+      // restarting the older ones' timers.
+      setTimeout(() => dismissToast(key), 10000)
     }
 
     function dismissToast(key) {
-      toastList = toastList.filter((toast) => toast.key !== key)
+      const next = toastList.filter((toast) => toast.key !== key)
+      if (next.length === toastList.length) return
+      toastList = next
       notifyToasts()
     }
 
@@ -467,7 +516,7 @@ window.__ModuleLoader__.load({
     /** Document-relative tone URL; works behind any reverse proxy. */
     function toneUrl(toneId, settings) {
       if (PRESET_TONES.includes(toneId)) return `notifications/tones/${PRESET_TONE_FILES[toneId]}`
-      const entry = (settings.customTones ?? []).find((tone) => tone.id === toneId)
+      const entry = usableTones(settings.customTones).find((tone) => tone.id === toneId)
       return entry === undefined ? undefined : `notifications/tones/${entry.file}`
     }
 
@@ -503,8 +552,11 @@ window.__ModuleLoader__.load({
       // `muteWhenFocused` silences tones while the tab has focus; demo
       // frames from the settings panel always play.
       if (!demo && settings.muteWhenFocused === true && document.hasFocus()) return
-      applyVolume(settings.volume)
+      // The context must exist before the volume lands: `applyVolume` is a
+      // no-op while `masterGain` is null, and a fresh GainNode defaults to
+      // gain 1, so the first tone of the page would ignore the slider.
       const context = ensureContext()
+      applyVolume(settings.volume)
       unlockAudio()
       // Decoding fills the gap the resume promise needs; if the context is
       // still suspended afterwards, no gesture happened yet.
@@ -580,6 +632,7 @@ window.__ModuleLoader__.load({
 
       async function pump() {
         while (!disposed) {
+          let stable = null
           try {
             const stream = ctx.remote.$stream({
               name: 'dsh-web-notifications',
@@ -590,7 +643,7 @@ window.__ModuleLoader__.load({
             })
             // The carrier has no open acknowledgement, so a stream that
             // survives five seconds without throwing counts as live.
-            const stable = setTimeout(() => setStreamRetrying(false), 5000)
+            stable = setTimeout(() => setStreamRetrying(false), 5000)
             timers.add(stable)
             for await (const frame of stream) {
               if (disposed) break
@@ -598,12 +651,18 @@ window.__ModuleLoader__.load({
               setStreamRetrying(false)
               handleFrame(frame.value)
             }
-            clearTimeout(stable)
-            timers.delete(stable)
           } catch {
             // Carrier failures and host restarts both land here; the loop
             // retries after a short pause and the panel shows the state.
             setStreamRetrying(true)
+          } finally {
+            // The stability timer must not outlive its stream generation:
+            // a stale one would clear the retrying state five seconds later
+            // while the pump is still down.
+            if (stable !== null) {
+              clearTimeout(stable)
+              timers.delete(stable)
+            }
           }
           if (disposed) return
           await delay(1000)
@@ -700,6 +759,85 @@ window.__ModuleLoader__.load({
         ),
         hint === undefined ? null : h('div', { className: 'dshn-hint' }, hint),
       )
+    }
+
+    function VolumeSlider({ value, write, t }) {
+      // The panel renders the host-mirrored config, so a controlled slider only
+      // moves once each mutation round-trips: the thumb trails the pointer and
+      // lands in visible jumps. The drag owns the thumb locally, and the store
+      // takes one trailing write per gesture instead of one per pixel.
+      const [shown, setShown] = useState(value)
+      const editing = useRef(false)
+      const pending = useRef(null)
+      const lastWritten = useRef(value)
+
+      const commit = (next) => {
+        if (pending.current !== null) {
+          clearTimeout(pending.current)
+          pending.current = null
+        }
+        lastWritten.current = next
+        write(['volume'], next)
+      }
+
+      const schedule = (next) => {
+        if (pending.current !== null) clearTimeout(pending.current)
+        pending.current = setTimeout(() => {
+          pending.current = null
+          commit(next)
+        }, 150)
+      }
+
+      useEffect(() => {
+        // Follow the mirror whenever this slider is not the one moving: another
+        // tab changed it, or Reset to defaults put every value back.
+        if (!editing.current && value !== lastWritten.current) setShown(value)
+      }, [value])
+
+      // A pending debounce that outlives the panel must not write through a
+      // form that is already gone.
+      useEffect(
+        () => () => {
+          if (pending.current !== null) clearTimeout(pending.current)
+        },
+        [],
+      )
+
+      return [
+        h('input', {
+          key: 'range',
+          id: 'dshn-volume',
+          className: 'dshn-range',
+          type: 'range',
+          min: 0,
+          max: 100,
+          step: 1,
+          value: shown,
+          // The filled part of the track follows the thumb, so the drag reads
+          // as one continuous move instead of a row of notches.
+          style: { '--dshn-fill': `${Math.max(0, Math.min(100, shown))}%` },
+          onFocus: () => {
+            editing.current = true
+          },
+          onBlur: () => {
+            editing.current = false
+            // Take the pending debounce away and write once, only if the store
+            // does not already hold this value.
+            if (pending.current !== null) {
+              clearTimeout(pending.current)
+              pending.current = null
+            }
+            if (shown !== lastWritten.current) commit(shown)
+          },
+          onChange: (event) => {
+            const next = Number(event.target.value)
+            setShown(next)
+            schedule(next)
+          },
+        }),
+        h('span', { key: 'value', className: 'dshn-value' }, String(shown)),
+        shown === 0 ? h('span', { key: 'muted', className: 'dshn-chip' }, t('field.volume.muted')) : null,
+      ]
     }
 
     const ICON_PATHS = {
@@ -799,7 +937,7 @@ window.__ModuleLoader__.load({
             },
             h('option', { value: TONE_NONE }, t('tone.none')),
             ...PRESET_TONES.map((toneId) => h('option', { key: toneId, value: toneId }, t(`tone.${toneId}`))),
-            ...(value.customTones ?? []).map((tone) => h('option', { key: tone.id, value: tone.id }, tone.name)),
+            ...usableTones(value.customTones).map((tone) => h('option', { key: tone.id, value: tone.id }, tone.name)),
           ),
           h(
             'button',
@@ -812,34 +950,39 @@ window.__ModuleLoader__.load({
             },
             icon('play'),
           ),
-        ),
-        h(
-          'div',
-          { className: 'dshn-action-row' },
-          // Preview stays inside the panel (toast), so the card layout and
-          // wording can be checked without raising an OS notification.
+          // Test shares the tone row instead of opening a row of its own, so
+          // each type stays one compact line. A refused test used to be
+          // invisible: the reply was dropped and nothing happened on screen.
+          h('span', { className: 'dshn-spacer' }),
           h(
             'button',
             {
               className: 'dshn-btn dshn-btn-tool',
               onClick: () =>
-                pushToast({ title: t('preview.title', { title: t(`type.${typeId}`) }), body: PREVIEW_BODIES[typeId] }),
+                void sendTest(typeId).then((result) => {
+                  if (result?.ok !== true)
+                    pushToast({
+                      title: t('type.test'),
+                      body: t('type.testFailed', { error: String(result?.error ?? 'unknown') }),
+                    })
+                }),
             },
-            t('type.preview'),
+            t('type.test'),
           ),
-          h('button', { className: 'dshn-btn dshn-btn-tool', onClick: () => void sendTest(typeId) }, t('type.test')),
         ),
       )
     }
 
-    function CustomTonesPanel({ t, value, write, uploadTone, deleteToneRemote }) {
+    function CustomTonesPanel({ t, value, write, getStoredTones, uploadTone, deleteToneRemote }) {
       const [error, setError] = useState('')
       const [renaming, setRenaming] = useState(null)
       const [confirmDelete, setConfirmDelete] = useState(null)
       const [uploading, setUploading] = useState(false)
       const [dragging, setDragging] = useState(false)
       const fileRef = useRef(null)
-      const tones = value.customTones ?? []
+      const cardRef = useRef(null)
+      const uploadRef = useRef(null)
+      const tones = usableTones(value.customTones)
 
       // Which types pick each tone, so a delete can name what falls back and
       // a row can show where the tone is in use.
@@ -855,13 +998,19 @@ window.__ModuleLoader__.load({
 
       const uploadFile = async (file) => {
         setError('')
+        // The card is long, so an inline error can sit below the fold. The
+        // toast is what guarantees the user learns why a drop did nothing.
+        const fail = (message) => {
+          setError(message)
+          pushToast({ title: t('tones.failed.title'), body: message })
+        }
         const extension = (file.name.slice(file.name.lastIndexOf('.') + 1) || '').toLowerCase()
         if (!UPLOAD_EXTENSIONS.includes(extension)) {
-          setError(t('tones.badType'))
+          fail(t('tones.badType'))
           return
         }
         if (file.size > (value.toneMaxBytes ?? 512000)) {
-          setError(t('tones.tooBig'))
+          fail(t('tones.tooBig'))
           return
         }
         // The upload must actually decode as audio, not just carry the
@@ -871,15 +1020,42 @@ window.__ModuleLoader__.load({
           bytes = await file.arrayBuffer()
           await decodeAudioData(bytes.slice(0))
         } catch {
-          setError(t('tones.badDecode'))
+          fail(t('tones.badDecode'))
           return
         }
         setUploading(true)
         try {
           const data = await fileToBase64(new Blob([bytes]))
           const result = await uploadTone({ name: file.name.replace(/\.[^.]+$/, ''), extension, data })
-          if (result?.ok === true) write(['customTones'], [...tones, result.tone])
-          else setError(t('tones.failed', { error: String(result?.error ?? 'unknown') }))
+          if (result?.ok !== true) {
+            fail(t('tones.rejected', { error: String(result?.error ?? 'unknown') }))
+            return
+          }
+          const tone = toneRecordFrom(result)
+          if (tone === null) {
+            // The file is on disk but the reply names no record, so the
+            // manifest cannot point at it. Quote the reply: this is the exact
+            // failure that used to end as a silent no-op plus a `- null` row.
+            fail(t('tones.norecord', { reply: JSON.stringify(result) }))
+            return
+          }
+          const saved = await write(['customTones'], [...tones, tone])
+          // "Accepted" is not proof. The only proof is the row coming back in
+          // the Host's mirror; without it the file on disk is stranded, which
+          // is the silent no-op this panel used to produce.
+          if (!saved || !getStoredTones().some((stored) => stored.id === tone.id)) {
+            // Take the stored file back so it cannot become an orphan.
+            void deleteToneRemote(tone.id)
+            fail(t('tones.saveFailed'))
+            return
+          }
+          pushToast({ title: t('tones.saved.title'), body: t('tones.saved', { name: tone.name }) })
+        } catch (cause) {
+          // A rejected round trip used to leave no trace at all: no catch here
+          // means the rejection escaped into `void uploadFile(...)` as an
+          // unhandled rejection, after the Host had already written the file.
+          // The message is the diagnosis, so put it on screen.
+          fail(t('tones.failed', { error: cause instanceof Error ? cause.message : String(cause) }))
         } finally {
           setUploading(false)
         }
@@ -891,18 +1067,76 @@ window.__ModuleLoader__.load({
         if (file) void uploadFile(file)
       }
 
-      const onDelete = (id) => {
-        void deleteToneRemote(id)
-        write(
-          ['customTones'],
-          tones.filter((tone) => tone.id !== id),
-        )
-        // A type using the deleted tone falls back to its default tone.
-        for (const typeId of TYPE_IDS) {
-          if (value.types[typeId].tone === id) write(['types', typeId, 'tone'], TYPE_DEFAULT_TONES[typeId])
+      // The drop has to be owned natively, not through React. The host's
+      // attachment view listens for `drop` on `document` and hands every
+      // dropped file to the chat composer, and this panel renders inside a
+      // portal, so a synthetic handler on the card cannot win that race.
+      // Capture-phase listeners on the card run before anything reaches
+      // `document`, and stopping propagation there keeps the host out entirely.
+      useEffect(() => {
+        uploadRef.current = uploadFile
+      })
+
+      useEffect(() => {
+        const card = cardRef.current
+        if (card === null) return
+        const carriesFiles = (event) => event.dataTransfer?.types?.includes('Files') === true
+        const onDragEnter = (event) => {
+          if (!carriesFiles(event)) return
+          event.preventDefault()
+          event.stopPropagation()
+          setDragging(true)
         }
-        decodedTones.delete(id)
+        const onDragOver = (event) => {
+          if (!carriesFiles(event)) return
+          event.preventDefault()
+          event.stopPropagation()
+          // Claim the gesture as a copy so the browser shows the card, not the
+          // composer, as the target.
+          event.dataTransfer.dropEffect = 'copy'
+          setDragging(true)
+        }
+        const onDragLeave = (event) => {
+          if (!carriesFiles(event)) return
+          event.stopPropagation()
+          // Crossing into a child is not leaving the card.
+          if (card.contains(event.relatedTarget)) return
+          setDragging(false)
+        }
+        const onDrop = (event) => {
+          if (!carriesFiles(event)) return
+          event.preventDefault()
+          event.stopPropagation()
+          setDragging(false)
+          const file = event.dataTransfer?.files?.[0]
+          if (file !== undefined) void uploadRef.current?.(file)
+        }
+        const handlers = { dragenter: onDragEnter, dragover: onDragOver, dragleave: onDragLeave, drop: onDrop }
+        for (const [kind, handler] of Object.entries(handlers)) card.addEventListener(kind, handler, true)
+        return () => {
+          for (const [kind, handler] of Object.entries(handlers)) card.removeEventListener(kind, handler, true)
+        }
+      }, [])
+
+      const onDelete = (id) => {
         setConfirmDelete(null)
+        // The manifest write is the commit point: the stored file goes only
+        // after the Host accepted the new manifest, so a refused write can
+        // never leave a row pointing at a deleted file. The per-type lookup
+        // is optional-chained because a stored document can predate a newer
+        // type's subtree, the same case TypeRow guards.
+        void (async () => {
+          const saved = await write(
+            ['customTones'],
+            tones.filter((tone) => tone.id !== id),
+          )
+          if (!saved) return
+          for (const typeId of TYPE_IDS) {
+            if (value.types[typeId]?.tone === id) await write(['types', typeId, 'tone'], TYPE_DEFAULT_TONES[typeId])
+          }
+          void deleteToneRemote(id)
+          decodedTones.delete(id)
+        })()
       }
 
       const onRename = (id, name) => {
@@ -916,20 +1150,9 @@ window.__ModuleLoader__.load({
       const limitKb = Math.max(1, Math.round((value.toneMaxBytes ?? 512000) / 1024))
       return h(
         'div',
-        {
-          className: `dshn-card${dragging ? ' dshn-card-dropping' : ''}`,
-          onDragOver: (event) => {
-            event.preventDefault()
-            setDragging(true)
-          },
-          onDragLeave: () => setDragging(false),
-          onDrop: (event) => {
-            event.preventDefault()
-            setDragging(false)
-            const file = event.dataTransfer?.files?.[0]
-            if (file) void uploadFile(file)
-          },
-        },
+        // The drag handlers are native capture listeners installed above, not
+        // props: the host's document-level drop handler must never see them.
+        { ref: cardRef, className: `dshn-card${dragging ? ' dshn-card-dropping' : ''}` },
         h('div', { className: 'dshn-card-title' }, t('tones.title')),
         h(
           'div',
@@ -1056,13 +1279,28 @@ window.__ModuleLoader__.load({
       )
       const retrying = useSyncExternalStore(subscribeStream, () => streamRetrying)
       const [armedReset, setArmedReset] = useState(false)
+      const [saveFailed, setSaveFailed] = useState(false)
       if (snapshot.status !== 'ready' || !snapshot.value) {
         return h('div', { className: 'dshn-hint' }, t('loading'))
       }
       const value = snapshot.value
-      const write = (path, next) => {
-        void form.mutate([{ op: 'set', path, value: next }])
-      }
+      // ConfigForm.mutate resolves to whether the Host accepted the write; a
+      // refused write never throws. Dropping that answer is how a stored tone
+      // ends up with no manifest row and no message anywhere.
+      const write = (path, next) =>
+        form.mutate([{ op: 'set', path, value: next }]).then(
+          (ok) => {
+            setSaveFailed(ok !== true)
+            return ok === true
+          },
+          () => {
+            setSaveFailed(true)
+            return false
+          },
+        )
+      // The Host's own view of the manifest, read straight from the form. The
+      // upload path uses it to confirm an accepted write actually landed.
+      const getStoredTones = () => usableTones(form.getSnapshot()?.value?.customTones)
       const onReset = async () => {
         // Two-step confirm: the first click arms, the second performs.
         if (!armedReset) {
@@ -1070,11 +1308,7 @@ window.__ModuleLoader__.load({
           return
         }
         setArmedReset(false)
-        const tones = value.customTones ?? []
-        for (const tone of tones) {
-          void deleteToneRemote(tone.id)
-          decodedTones.delete(tone.id)
-        }
+        const tones = usableTones(value.customTones)
         const ops = [
           ...Object.entries(CONFIG_DEFAULTS).map(([key, next]) => ({ op: 'set', path: [key], value: next })),
           { op: 'set', path: ['customTones'], value: [] },
@@ -1086,7 +1320,17 @@ window.__ModuleLoader__.load({
             })),
           ),
         ]
-        await form.mutate(ops)
+        const saved = await form.mutate(ops)
+        setSaveFailed(saved !== true)
+        // Same commit point as the delete path: the stored files go only
+        // once the manifest write landed, and a type using a deleted tone
+        // was reset to its default tone in the same mutation.
+        if (saved === true) {
+          for (const tone of tones) {
+            void deleteToneRemote(tone.id)
+            decodedTones.delete(tone.id)
+          }
+        }
       }
       return h(
         'div',
@@ -1115,26 +1359,9 @@ window.__ModuleLoader__.load({
           'div',
           { className: 'dshn-card' },
           h('div', { className: 'dshn-card-title' }, t('card.behavior')),
-          fieldRow(
-            t('field.volume'),
-            [
-              h('input', {
-                key: 'range',
-                id: 'dshn-volume',
-                className: 'dshn-range',
-                type: 'range',
-                min: 0,
-                max: 100,
-                step: 1,
-                value: value.volume,
-                onChange: (event) => write(['volume'], Number(event.target.value)),
-              }),
-              h('span', { key: 'value', className: 'dshn-value' }, String(value.volume)),
-              value.volume === 0 ? h('span', { key: 'muted', className: 'dshn-chip' }, t('field.volume.muted')) : null,
-            ],
-            undefined,
-            'dshn-volume',
-          ),
+          // Called as a plain function, not through h(): its nodes go straight
+          // into the field row, and its hooks join this component's own list.
+          fieldRow(t('field.volume'), VolumeSlider({ value: value.volume, write, t }), undefined, 'dshn-volume'),
           fieldRow(t('field.onlyWhenHidden'), [
             h(Switch, {
               key: 'switch',
@@ -1181,11 +1408,13 @@ window.__ModuleLoader__.load({
             'dshn-maxBodyChars',
           ),
         ),
-        h(CustomTonesPanel, { t, value, write, uploadTone, deleteToneRemote }),
+        h(CustomTonesPanel, { t, value, write, getStoredTones, uploadTone, deleteToneRemote }),
         h(
           'div',
           { className: 'dshn-footer' },
-          h('span', { className: 'dshn-hint' }, t('action.applyHint')),
+          saveFailed
+            ? h('span', { className: 'dshn-error' }, t('action.saveFailed'))
+            : h('span', { className: 'dshn-hint' }, t('action.applyHint')),
           h('span', { className: 'dshn-spacer' }),
           h(
             'button',
@@ -1211,14 +1440,9 @@ window.__ModuleLoader__.load({
     }
 
     function ToastStack({ dismiss }) {
+      // Auto-dismissal is scheduled by `pushToast` itself; the stack only
+      // renders the current list.
       const toasts = useSyncExternalStore(subscribeToasts, () => toastList)
-      useEffect(() => {
-        if (toasts.length === 0) return
-        const timers = toasts.map((toast) => setTimeout(() => dismiss(toast.key), 10000))
-        return () => {
-          for (const timer of timers) clearTimeout(timer)
-        }
-      }, [toasts, dismiss])
       if (toasts.length === 0) return null
       return h(
         'div',
@@ -1264,8 +1488,7 @@ window.__ModuleLoader__.load({
 .dshn-label{flex:1;min-width:0;font-size:13px;font-weight:500;line-height:1.5}
 .dshn-sublabel{font-size:12px;color:var(--dsw-alias-label-secondary)}
 .dshn-hint{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
-.dshn-control-row,.dshn-action-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.dshn-action-row{justify-content:flex-end}
+.dshn-control-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshn-spacer{flex:1}
 .dshn-switch{box-sizing:border-box;position:relative;flex:0 0 auto;width:36px;height:20px;padding:2px;border:0;border-radius:999px;background:var(--dsw-alias-border-l3);cursor:pointer}
 .dshn-switch[aria-checked='true']{background:var(--dsw-alias-brand-primary)}
@@ -1286,7 +1509,13 @@ window.__ModuleLoader__.load({
 .dshn-select,.dshn-number,.dshn-text{height:30px;padding:0 10px;border:0.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-3);font:inherit;font-size:13px;color:var(--dsw-alias-label-primary)}
 .dshn-select:focus-visible,.dshn-number:focus-visible,.dshn-text:focus-visible{outline:none;border-color:var(--dsw-alias-state-business-primary)}
 .dshn-number{width:72px}
-.dshn-range{accent-color:var(--dsw-alias-brand-primary);width:140px}
+.dshn-range{-webkit-appearance:none;appearance:none;box-sizing:border-box;width:140px;height:16px;padding:0;background:none;cursor:pointer}
+.dshn-range:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
+.dshn-range::-webkit-slider-runnable-track{height:3px;border-radius:999px;background:linear-gradient(to right,var(--dsw-alias-brand-primary) var(--dshn-fill,50%),var(--dsw-alias-border-l3) var(--dshn-fill,50%))}
+.dshn-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;box-sizing:border-box;width:11px;height:11px;margin-top:-4px;border:0;border-radius:50%;background:var(--dsw-alias-brand-primary)}
+.dshn-range::-moz-range-track{height:3px;border-radius:999px;background:var(--dsw-alias-border-l3)}
+.dshn-range::-moz-range-progress{height:3px;border-radius:999px;background:var(--dsw-alias-brand-primary)}
+.dshn-range::-moz-range-thumb{box-sizing:border-box;width:11px;height:11px;border:0;border-radius:50%;background:var(--dsw-alias-brand-primary)}
 .dshn-value{font-size:12px;color:var(--dsw-alias-label-secondary);min-width:2.5em}
 .dshn-chip{display:inline-flex;align-items:center;border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--dsw-alias-label-secondary)}
 .dshn-chip-usage{color:var(--dsw-alias-label-primary-bluish)}
@@ -1364,13 +1593,27 @@ window.__ModuleLoader__.load({
                       t,
                       // The nonce identifies this tab's demo request, so the
                       // demo card renders only where the button was pressed.
-                      sendTest: (type) => {
+                      sendTest: async (type) => {
                         const nonce = `${TAB_ID}-d${++demoSeq}`
                         pendingDemos.add(nonce)
-                        return injected.remote.notifications.testNotification({ type, nonce })
+                        try {
+                          const result = remoteReplyPayload(
+                            await injected.remote.notifications.testNotification({ type, nonce }),
+                          )
+                          // A refused test never produces a frame, so drop
+                          // the nonce instead of leaking it in the pending
+                          // set until the tab closes.
+                          if (result?.ok !== true) pendingDemos.delete(nonce)
+                          return result
+                        } catch (cause) {
+                          pendingDemos.delete(nonce)
+                          return { ok: false, error: cause instanceof Error ? cause.message : String(cause) }
+                        }
                       },
-                      uploadTone: (input) => injected.remote.notifications.uploadTone(input),
-                      deleteToneRemote: (id) => injected.remote.notifications.deleteTone({ id }),
+                      uploadTone: async (input) =>
+                        remoteReplyPayload(await injected.remote.notifications.uploadTone(input)),
+                      deleteToneRemote: async (id) =>
+                        remoteReplyPayload(await injected.remote.notifications.deleteTone({ id })),
                     }),
                   },
                   NotificationsSection,

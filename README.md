@@ -32,7 +32,6 @@ Exactly the rows the Settings panel shows, in panel order:
 | Per-type switch                                  | Drop one alert and keep the rest: keep _Approval needed_, silence _Turn complete_.                  |
 | Per-type tone picker                             | Gives each alert its own sound, so you know which one fired without looking.                        |
 | **Test**                                         | Sends a real alert, card and tone, exactly like a live one, in the tab you clicked.                 |
-| **Preview**                                      | Shows what the card would look like, as a toast inside dsh. Nothing leaves the page.                |
 | **Test tone**                                    | Plays that sound alone, so you can choose by ear.                                                   |
 | **Tone volume**                                  | How loud the alert sounds, 0 to 100.                                                                |
 | **Mute tones while this tab is focused**         | No sound while you are already looking at dsh. Cards still appear.                                  |

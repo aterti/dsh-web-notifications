@@ -65,6 +65,76 @@ const toneRecordShape = {
   bytes: z.number().step(1).min(0),
 }
 
+/**
+ * Keep only well-formed tone records out of a stored `customTones` array.
+ *
+ * The loader checks array elements loosely and accepts a `null` row, and both
+ * halves read `tone.id` on every entry, so one malformed row in a stored
+ * document would otherwise take the whole Settings panel down.
+ *
+ * @param list - raw `customTones` value, possibly undefined or malformed.
+ * @returns the entries that carry a usable id and file name.
+ */
+export function usableTones(list) {
+  if (!Array.isArray(list)) return []
+  return list.filter(
+    (tone) =>
+      tone !== null &&
+      typeof tone === 'object' &&
+      typeof tone.id === 'string' &&
+      tone.id !== '' &&
+      typeof tone.file === 'string' &&
+      tone.file !== '',
+  )
+}
+
+/**
+ * Read the tone record out of an `uploadTone` reply.
+ *
+ * The Host answers flat (`{ ok, id, name, file, bytes }`). The nested shape
+ * under `tone` is still accepted because that is what earlier builds sent,
+ * and a reply that carries neither is reported as absent rather than passed
+ * through: an `undefined` record appended to the manifest is what the profile
+ * document then stored as a `- null` row.
+ *
+ * @param reply - raw `uploadTone` reply.
+ * @returns the normalized record, or null when the reply carries none.
+ */
+export function toneRecordFrom(reply) {
+  const source = reply !== null && typeof reply === 'object' ? (reply.tone ?? reply) : null
+  if (source === null || typeof source !== 'object') return null
+  const { id, name, file, bytes } = source
+  if (typeof id !== 'string' || id === '' || typeof file !== 'string' || file === '') return null
+  return {
+    id,
+    name: typeof name === 'string' && name !== '' ? name : id,
+    file,
+    bytes: typeof bytes === 'number' && Number.isFinite(bytes) ? bytes : 0,
+  }
+}
+
+/**
+ * Unwrap one gateway unary reply.
+ *
+ * Every Remote call resolves to an envelope: `{ ok: true, value }` when the
+ * call went through, `{ ok: false, error }` when it did not. A controller's
+ * own `{ ok, error }` answer therefore sits one level deeper, under `value`.
+ * Reading the envelope as if it were the answer is what made a tone upload
+ * look successful while carrying no tone record at all.
+ *
+ * @param reply - raw envelope from the gateway client.
+ * @returns the controller's reply, or a business error when the call failed.
+ */
+export function remoteReplyPayload(reply) {
+  if (reply === null || typeof reply !== 'object') return reply
+  if (reply.ok === false) {
+    const error = reply.error
+    const message = error !== null && typeof error === 'object' ? (error.message ?? error.code) : error
+    return { ok: false, error: String(message ?? 'the remote call failed') }
+  }
+  return Object.hasOwn(reply, 'value') ? reply.value : reply
+}
+
 const typeShape = (defaults) => ({
   enabled: z.boolean().default(defaults.enabled).volatile(),
   tone: z.string().default(defaults.tone).volatile(),

@@ -29,7 +29,7 @@
 // `session/event` is the post-commit live append feed: it never replays on
 // resume or plugin load, so triggers are live-only by construction.
 
-import { plainLine } from './text.js'
+import { plainLine, truncateAtWord } from './text.js'
 
 /** Character cap for the turn_complete body, per the product contract. */
 const TURN_BODY_CHARS = 140
@@ -139,13 +139,18 @@ export function installTriggers(ctx, config, controller) {
     // `{ message, code: 'UNKNOWN' }`. The code is kept because it is the part
     // that says whether retrying or switching route would help.
     const code = typeof failure?.code === 'string' && failure.code !== '' ? ` (${failure.code})` : ''
-    const message = plainLine(failure?.message ?? 'The model request failed.', Math.max(20, bodyCap() - code.length))
+    // The code keeps its slot first and the message gets what remains, so
+    // the combined body never crosses the cap; a code longer than the cap is
+    // the one that gets cut.
+    const cap = bodyCap()
+    const message = plainLine(failure?.message ?? 'The model request failed.', Math.max(0, cap - code.length))
+    const body = `${message}${code}`
     // Privacy: the provider message can echo request content, so only the code
     // and its length reach the log; the text exists only in the card body.
     logger.info(
       `turn failed notification: session=${session.id} code=${failure?.code ?? 'none'} messageLength=${String(failure?.message ?? '').length}`,
     )
-    publish('turnFailed', `${message}${code}`)
+    publish('turnFailed', body.length > cap ? truncateAtWord(body, cap) : body)
   }
 
   function fireGoal(goal, type) {

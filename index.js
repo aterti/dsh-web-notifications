@@ -8,10 +8,18 @@
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { Config, NOTIFICATION_TYPES, PRESET_TONE_FILES, migrateConfig, reportUnknownKeys } from './config.js'
+import {
+  Config,
+  NOTIFICATION_TYPES,
+  PRESET_TONE_FILES,
+  migrateConfig,
+  reportUnknownKeys,
+  usableTones,
+} from './config.js'
 import { installTriggers } from './triggers.js'
 import {
   TONE_ROUTE_PREFIX,
+  SAFE_FILE,
   createToneHandler,
   removeCustomTone,
   saveCustomTone,
@@ -93,25 +101,29 @@ export class NotificationsController extends TypertRemoteService {
     this.senders.add(send)
     const senders = this.senders
     return (async function* frames() {
+      // One abort listener for the whole stream, not one per wait cycle:
+      // `once: true` only detaches a listener when abort actually fires, so
+      // re-attaching per frame accumulates a listener per delivered frame on
+      // a long-lived stream. This one wakes whatever wait is parked; the
+      // loop's `aborted` check then ends the generator.
+      const onAbort = () => {
+        const wake = state.wake
+        if (wake !== null) {
+          state.wake = null
+          wake()
+        }
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
       try {
         while (!signal.aborted) {
           while (state.queue.length > 0) yield state.queue.shift()
           if (signal.aborted) break
           await new Promise((resolve) => {
             state.wake = resolve
-            signal.addEventListener(
-              'abort',
-              () => {
-                if (state.wake === resolve) {
-                  state.wake = null
-                  resolve()
-                }
-              },
-              { once: true },
-            )
           })
         }
       } finally {
+        signal.removeEventListener('abort', onAbort)
         senders.delete(send)
       }
     })()
@@ -143,22 +155,20 @@ export class NotificationsController extends TypertRemoteService {
    * the host never writes config itself.
    *
    * @param input - `{ name, extension, data }` with base64 file bytes.
-   * @returns the tone record to manifest, or a business error.
+   * @returns flat success carrying the tone record fields, or a business error.
    */
   async uploadTone(input) {
     if (input === null || typeof input !== 'object') return { ok: false, error: 'invalid upload' }
     const name = sanitizeName(input.name)
     if (name === undefined) return { ok: false, error: 'tone name is empty or unusable' }
     const extension = typeof input.extension === 'string' ? input.extension.toLowerCase() : ''
-    let buffer
-    try {
-      buffer = Buffer.from(String(input.data ?? ''), 'base64')
-    } catch {
-      return { ok: false, error: 'upload payload is not valid base64' }
-    }
+    // `Buffer.from` on a base64 string never throws: invalid characters are
+    // ignored, and the content sniffing in `validateUpload` rejects whatever
+    // garbage that leaves behind.
+    const buffer = Buffer.from(String(input.data ?? ''), 'base64')
     const validated = validateUpload(buffer, extension, this.config.toneMaxBytes.get())
     if (validated.error !== undefined) return { ok: false, error: validated.error }
-    if ((this.config.customTones.get() ?? []).length >= this.config.toneMaxCount.get())
+    if (usableTones(this.config.customTones.get()).length >= this.config.toneMaxCount.get())
       return { ok: false, error: `tone limit reached (${this.config.toneMaxCount.get()})` }
     // Fresh id per upload: files are never overwritten, so a rename or a
     // re-upload of the same name cannot clobber a tone another type uses.
@@ -166,7 +176,11 @@ export class NotificationsController extends TypertRemoteService {
     const file = `${id}.${extension}`
     await saveCustomTone(this.config.dataRoot, file, buffer)
     this.logger.info(`custom tone stored: id=${id} format=${validated.format} bytes=${buffer.length}`)
-    return { ok: true, tone: { id, name, file, bytes: buffer.length } }
+    // Flat on purpose. The nested record was the only nested value on this
+    // route, and a reply that came back without it made the browser append
+    // `undefined` to the manifest, which the profile document then stored as
+    // a `- null` row, and that row is what killed the Settings section.
+    return { ok: true, id, name, file, bytes: buffer.length }
   }
 
   /**
@@ -179,8 +193,12 @@ export class NotificationsController extends TypertRemoteService {
   async deleteTone(input) {
     const id = input !== null && typeof input === 'object' ? input.id : undefined
     if (typeof id !== 'string' || id === '') return { ok: false, error: 'invalid tone id' }
-    const entry = (this.config.customTones.get() ?? []).find((tone) => tone.id === id)
+    const entry = usableTones(this.config.customTones.get()).find((tone) => tone.id === id)
     if (entry === undefined) return { ok: false, error: 'unknown tone' }
+    // The manifest is user-editable, so re-check the stored file name before
+    // unlinking: a hand-edited `../` row must not reach `join` and delete
+    // outside the custom directory.
+    if (!SAFE_FILE.test(entry.file)) return { ok: false, error: 'stored tone file name is unusable' }
     await removeCustomTone(this.config.dataRoot, entry.file)
     this.logger.info(`custom tone removed: id=${id}`)
     return { ok: true }
